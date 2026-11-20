@@ -1,0 +1,35 @@
+name: Build APK
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Assemble project structure from flat files
+        run: |
+          mkdir -p src/main/java/app/htmlbuilder src/main/res/mipmap-xxxhdpi src/main/assets
+          mv MainActivity.kt ApkBuilder.kt ManifestPatcher.kt InstallReceiver.kt src/main/java/app/htmlbuilder/
+          mv AndroidManifest.xml src/main/
+          mv ic_launcher.png src/main/res/mipmap-xxxhdpi/
+          find . -path ./.git -prune -o -type f -not -path './.gradle/*' -print | sort
+      - name: Generate signing key (used by the app to sign generated APKs)
+        run: |
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/key.pem -out /tmp/cert.pem -days 36500 -subj "/CN=HtmlToApk"
+          openssl pkcs8 -topk8 -nocrypt -in /tmp/key.pem -outform DER -out src/main/assets/key.pk8
+          openssl x509 -in /tmp/cert.pem -outform DER -out src/main/assets/cert.der
+      - name: Build
+        run: gradle assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HtmlToApk
+          path: build/outputs/apk/release/*.apk
